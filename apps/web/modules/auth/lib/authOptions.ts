@@ -23,7 +23,10 @@ import {
   shouldLogAuthFailure,
   verifyPassword,
 } from "@/modules/auth/lib/utils";
-import { applyIPRateLimit } from "@/modules/core/rate-limit/helpers";
+import {
+  applyPublicIpRateLimit,
+  publicEdgeRateLimitPolicies,
+} from "@/modules/core/rate-limit/public-edge-rate-limit";
 import { rateLimitConfigs } from "@/modules/core/rate-limit/rate-limit-configs";
 import { UNKNOWN_DATA } from "@/modules/ee/audit-logs/types/audit-log";
 import { getSSOProviders } from "@/modules/ee/sso/lib/providers";
@@ -55,7 +58,7 @@ export const authOptions: NextAuthOptions = {
         backupCode: { label: "Backup Code", type: "input", placeholder: "Two-factor backup code" },
       },
       async authorize(credentials, _req) {
-        await applyIPRateLimit(rateLimitConfigs.auth.login);
+        await applyPublicIpRateLimit(publicEdgeRateLimitPolicies.authLogin, rateLimitConfigs.auth.login);
 
         // Use email for rate limiting when available, fall back to "unknown_user" for credential validation
         const identifier = credentials?.email || "unknown_user"; // NOSONAR // We want to check for empty strings
@@ -245,7 +248,10 @@ export const authOptions: NextAuthOptions = {
         },
       },
       async authorize(credentials, _req) {
-        await applyIPRateLimit(rateLimitConfigs.auth.verifyEmail);
+        await applyPublicIpRateLimit(
+          publicEdgeRateLimitPolicies.authVerifyEmail,
+          rateLimitConfigs.auth.verifyEmail
+        );
 
         // For token verification, we can't rate limit effectively by token (single-use)
         // So we use a generic identifier for token abuse attempts

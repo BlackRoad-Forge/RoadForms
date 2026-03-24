@@ -14,6 +14,11 @@ import { getClientIpFromHeaders } from "@/lib/utils/client-ip";
 import { getOrganizationIdFromEnvironmentId } from "@/lib/utils/helper";
 import { formatValidationErrorsForV1Api, validateResponseData } from "@/modules/api/lib/validation";
 import { validateOtherOptionLengthForMultipleChoice } from "@/modules/api/v2/lib/element";
+import {
+  applyPublicIpRateLimit,
+  publicEdgeRateLimitPolicies,
+} from "@/modules/core/rate-limit/public-edge-rate-limit";
+import { rateLimitConfigs } from "@/modules/core/rate-limit/rate-limit-configs";
 import { getIsContactsEnabled } from "@/modules/ee/license-check/lib/utils";
 import { createQuotaFullObject } from "@/modules/ee/quotas/lib/helpers";
 import { createResponseWithQuotaEvaluation } from "./lib/response";
@@ -36,6 +41,15 @@ export const OPTIONS = async (): Promise<Response> => {
 };
 
 export const POST = async (request: Request, context: Context): Promise<Response> => {
+  try {
+    await applyPublicIpRateLimit(publicEdgeRateLimitPolicies.v2ClientResponses, rateLimitConfigs.api.client);
+  } catch (error) {
+    return responses.tooManyRequestsResponse(
+      error instanceof Error ? error.message : "Rate limit exceeded",
+      true
+    );
+  }
+
   const params = await context.params;
   const requestHeaders = await headers();
   let responseInput;

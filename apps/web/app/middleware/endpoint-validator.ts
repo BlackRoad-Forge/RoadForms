@@ -13,7 +13,7 @@ export enum AuthenticationMethod {
 
 export const isClientSideApiRoute = (url: string): { isClientSideApi: boolean; isRateLimited: boolean } => {
   // Open Graph image generation route is a client side API route but it should not be rate limited
-  if (url.includes("/api/v1/client/og")) return { isClientSideApi: true, isRateLimited: false };
+  if (/^\/api\/v1\/client\/og(?:\/.*)?$/.test(url)) return { isClientSideApi: true, isRateLimited: false };
 
   const regex = /^\/api\/v\d+\/client\//;
   return { isClientSideApi: regex.test(url), isRateLimited: true };

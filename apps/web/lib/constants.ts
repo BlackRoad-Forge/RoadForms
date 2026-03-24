@@ -3,6 +3,7 @@ import { TUserLocale } from "@formbricks/types/user";
 import { env } from "./env";
 
 export const IS_FORMBRICKS_CLOUD = env.IS_FORMBRICKS_CLOUD === "1";
+export const EDGE_RATE_LIMIT_PROVIDER = env.EDGE_RATE_LIMIT_PROVIDER ?? "none";
 
 export const IS_PRODUCTION = env.NODE_ENV === "production";
 

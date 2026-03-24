@@ -48,6 +48,10 @@ describe("endpoint-validator", () => {
         isClientSideApi: true,
         isRateLimited: false,
       });
+      expect(isClientSideApiRoute("/api/v1/client/og-image")).toEqual({
+        isClientSideApi: true,
+        isRateLimited: true,
+      });
     });
 
     test("should return false for non-client-side API routes", () => {

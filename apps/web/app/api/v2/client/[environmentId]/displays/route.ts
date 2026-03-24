@@ -4,6 +4,11 @@ import { ZDisplayCreateInputV2 } from "@/app/api/v2/client/[environmentId]/displ
 import { responses } from "@/app/lib/api/response";
 import { transformErrorToDetails } from "@/app/lib/api/validator";
 import { getOrganizationIdFromEnvironmentId } from "@/lib/utils/helper";
+import {
+  applyPublicIpRateLimit,
+  publicEdgeRateLimitPolicies,
+} from "@/modules/core/rate-limit/public-edge-rate-limit";
+import { rateLimitConfigs } from "@/modules/core/rate-limit/rate-limit-configs";
 import { getIsContactsEnabled } from "@/modules/ee/license-check/lib/utils";
 import { createDisplay } from "./lib/display";
 
@@ -24,6 +29,15 @@ export const OPTIONS = async (): Promise<Response> => {
 };
 
 export const POST = async (request: Request, context: Context): Promise<Response> => {
+  try {
+    await applyPublicIpRateLimit(publicEdgeRateLimitPolicies.v2ClientDisplays, rateLimitConfigs.api.client);
+  } catch (error) {
+    return responses.tooManyRequestsResponse(
+      error instanceof Error ? error.message : "Rate limit exceeded",
+      true
+    );
+  }
+
   const params = await context.params;
   const jsonInput = await request.json();
   const inputValidation = ZDisplayCreateInputV2.safeParse({

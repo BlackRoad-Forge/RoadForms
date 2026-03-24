@@ -3,11 +3,14 @@ import { Provider } from "next-auth/providers/index";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@formbricks/database";
 import { EMAIL_VERIFICATION_DISABLED } from "@/lib/constants";
-// Import mocked rate limiting functions
-import { applyIPRateLimit } from "@/modules/core/rate-limit/helpers";
+import {
+  applyPublicIpRateLimit,
+  publicEdgeRateLimitPolicies,
+} from "@/modules/core/rate-limit/public-edge-rate-limit";
 import { rateLimitConfigs } from "@/modules/core/rate-limit/rate-limit-configs";
 import { authOptions } from "./authOptions";
 import { mockUser } from "./mock-data";
+import { getUserByEmail } from "./user";
 import { hashPassword } from "./utils";
 
 // Mock encryption utilities
@@ -19,10 +22,47 @@ vi.mock("@/lib/encryption", () => ({
 // Mock JWT
 vi.mock("@/lib/jwt");
 
-// Mock rate limiting dependencies
-vi.mock("@/modules/core/rate-limit/helpers", () => ({
-  applyIPRateLimit: vi.fn(),
+vi.mock("@/modules/core/rate-limit/public-edge-rate-limit", () => ({
+  applyPublicIpRateLimit: vi.fn(),
+  publicEdgeRateLimitPolicies: {
+    authLogin: "auth.login",
+    authVerifyEmail: "auth.verify_email",
+  },
 }));
+
+vi.mock("./user", () => ({
+  getUserByEmail: vi.fn(),
+  updateUser: vi.fn(),
+  updateUserLastLoginAt: vi.fn(),
+}));
+
+vi.mock("./brevo", () => ({
+  createBrevoCustomer: vi.fn(),
+}));
+
+vi.mock("@/modules/ee/sso/lib/providers", () => ({
+  getSSOProviders: vi.fn(() => []),
+}));
+
+vi.mock("@/modules/ee/sso/lib/sso-handlers", () => ({
+  handleSsoCallback: vi.fn(),
+}));
+
+vi.mock("@/modules/ee/audit-logs/lib/handler", () => ({
+  queueAuditEventBackground: vi.fn(),
+}));
+
+vi.mock("@/modules/ee/audit-logs/types/audit-log", () => ({
+  UNKNOWN_DATA: "unknown",
+}));
+
+vi.mock("./utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./utils")>();
+  return {
+    ...actual,
+    shouldLogAuthFailure: vi.fn().mockResolvedValue(false),
+  };
+});
 
 vi.mock("@/modules/core/rate-limit/rate-limit-configs", () => ({
   rateLimitConfigs: {
@@ -33,26 +73,22 @@ vi.mock("@/modules/core/rate-limit/rate-limit-configs", () => ({
   },
 }));
 
-// Mock constants that this test needs while preserving untouched exports.
-vi.mock("@/lib/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/constants")>();
-  return {
-    ...actual,
-    EMAIL_VERIFICATION_DISABLED: false,
-    SESSION_MAX_AGE: 86400,
-    NEXTAUTH_SECRET: "test-secret",
-    WEBAPP_URL: "http://localhost:3000",
-    ENCRYPTION_KEY: "12345678901234567890123456789012", // 32 bytes for AES-256
-    REDIS_URL: undefined,
-    AUDIT_LOG_ENABLED: false,
-    AUDIT_LOG_GET_USER_IP: false,
-    ENTERPRISE_LICENSE_KEY: undefined,
-    SENTRY_DSN: undefined,
-    BREVO_API_KEY: undefined,
-    RATE_LIMITING_DISABLED: false,
-    CONTROL_HASH: "$2b$12$fzHf9le13Ss9UJ04xzmsjODXpFJxz6vsnupoepF5FiqDECkX2BH5q",
-  };
-});
+vi.mock("@/lib/constants", () => ({
+  EMAIL_VERIFICATION_DISABLED: false,
+  EDGE_RATE_LIMIT_PROVIDER: "none",
+  SESSION_MAX_AGE: 86400,
+  NEXTAUTH_SECRET: "test-secret",
+  WEBAPP_URL: "http://localhost:3000",
+  ENCRYPTION_KEY: "12345678901234567890123456789012", // 32 bytes for AES-256
+  REDIS_URL: undefined,
+  AUDIT_LOG_ENABLED: false,
+  AUDIT_LOG_GET_USER_IP: false,
+  ENTERPRISE_LICENSE_KEY: undefined,
+  SENTRY_DSN: undefined,
+  BREVO_API_KEY: undefined,
+  RATE_LIMITING_DISABLED: false,
+  CONTROL_HASH: "$2b$12$fzHf9le13Ss9UJ04xzmsjODXpFJxz6vsnupoepF5FiqDECkX2BH5q",
+}));
 
 // Mock next/headers
 vi.mock("next/headers", () => ({
@@ -114,7 +150,7 @@ describe("authOptions", () => {
     });
 
     test("should throw error if user not found", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       vi.spyOn(prisma.user, "findUnique").mockResolvedValue(null);
 
       const credentials = { email: mockUser.email, password: mockPassword };
@@ -125,7 +161,7 @@ describe("authOptions", () => {
     });
 
     test("should throw error if user has no password stored", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
         id: mockUser.id,
         email: mockUser.email,
@@ -140,7 +176,7 @@ describe("authOptions", () => {
     });
 
     test("should throw error if password verification fails", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
         id: mockUserId,
         email: mockUser.email,
@@ -155,7 +191,7 @@ describe("authOptions", () => {
     });
 
     test("should successfully login when credentials are valid", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       const fakeUser = {
         id: mockUserId,
         email: mockUser.email,
@@ -178,7 +214,7 @@ describe("authOptions", () => {
 
     describe("Rate Limiting", () => {
       test("should apply rate limiting before credential validation", async () => {
-        vi.mocked(applyIPRateLimit).mockResolvedValue();
+        vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
         vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
           id: mockUserId,
           email: mockUser.email,
@@ -191,12 +227,15 @@ describe("authOptions", () => {
 
         await credentialsProvider.options.authorize(credentials, {});
 
-        expect(applyIPRateLimit).toHaveBeenCalledWith(rateLimitConfigs.auth.login);
-        expect(applyIPRateLimit).toHaveBeenCalledBefore(prisma.user.findUnique as any);
+        expect(applyPublicIpRateLimit).toHaveBeenCalledWith(
+          publicEdgeRateLimitPolicies.authLogin,
+          rateLimitConfigs.auth.login
+        );
+        expect(applyPublicIpRateLimit).toHaveBeenCalledBefore(prisma.user.findUnique as any);
       });
 
       test("should block login when rate limit exceeded", async () => {
-        vi.mocked(applyIPRateLimit).mockRejectedValue(
+        vi.mocked(applyPublicIpRateLimit).mockRejectedValue(
           new Error("Maximum number of requests reached. Please try again later.")
         );
         const findUniqueSpy = vi.spyOn(prisma.user, "findUnique");
@@ -211,7 +250,7 @@ describe("authOptions", () => {
       });
 
       test("should use correct rate limit configuration", async () => {
-        vi.mocked(applyIPRateLimit).mockResolvedValue();
+        vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
         vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
           id: mockUserId,
           email: mockUser.email,
@@ -224,7 +263,7 @@ describe("authOptions", () => {
 
         await credentialsProvider.options.authorize(credentials, {});
 
-        expect(applyIPRateLimit).toHaveBeenCalledWith({
+        expect(applyPublicIpRateLimit).toHaveBeenCalledWith(publicEdgeRateLimitPolicies.authLogin, {
           interval: 900,
           allowedPerInterval: 30,
           namespace: "auth:login",
@@ -234,7 +273,7 @@ describe("authOptions", () => {
 
     describe("Two-Factor Backup Code login", () => {
       test("should throw error if backup codes are missing", async () => {
-        vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+        vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
         const mockUser = {
           id: mockUserId,
           email: "2fa@example.com",
@@ -263,7 +302,7 @@ describe("authOptions", () => {
     });
 
     test("should throw error if token is invalid or user not found", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       const credentials = { token: "badtoken" };
 
       await expect(tokenProvider.options.authorize(credentials, {})).rejects.toThrow(
@@ -273,17 +312,20 @@ describe("authOptions", () => {
 
     describe("Rate Limiting", () => {
       test("should apply rate limiting before token verification", async () => {
-        vi.mocked(applyIPRateLimit).mockResolvedValue();
+        vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
 
         const credentials = { token: "sometoken" };
 
         await expect(tokenProvider.options.authorize(credentials, {})).rejects.toThrow();
 
-        expect(applyIPRateLimit).toHaveBeenCalledWith(rateLimitConfigs.auth.verifyEmail);
+        expect(applyPublicIpRateLimit).toHaveBeenCalledWith(
+          publicEdgeRateLimitPolicies.authVerifyEmail,
+          rateLimitConfigs.auth.verifyEmail
+        );
       });
 
       test("should block verification when rate limit exceeded", async () => {
-        vi.mocked(applyIPRateLimit).mockRejectedValue(
+        vi.mocked(applyPublicIpRateLimit).mockRejectedValue(
           new Error("Maximum number of requests reached. Please try again later.")
         );
         const findUniqueSpy = vi.spyOn(prisma.user, "findUnique");
@@ -302,7 +344,7 @@ describe("authOptions", () => {
   describe("Callbacks", () => {
     describe("jwt callback", () => {
       test("should add profile information to token if user is found", async () => {
-        vi.spyOn(prisma.user, "findFirst").mockResolvedValue({
+        vi.mocked(getUserByEmail).mockResolvedValue({
           id: mockUser.id,
           locale: mockUser.locale,
           email: mockUser.email,
@@ -321,7 +363,7 @@ describe("authOptions", () => {
       });
 
       test("should return token unchanged if no existing user is found", async () => {
-        vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null);
+        vi.mocked(getUserByEmail).mockResolvedValue(null);
 
         const token = { email: "nonexistent@example.com" };
         if (!authOptions.callbacks?.jwt) {
@@ -366,7 +408,7 @@ describe("authOptions", () => {
     const credentialsProvider = getProviderById("credentials");
 
     test("should throw error if TOTP code is missing when 2FA is enabled", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       const mockUser = {
         id: mockUserId,
         email: "2fa@example.com",
@@ -384,7 +426,7 @@ describe("authOptions", () => {
     });
 
     test("should throw error if two factor secret is missing", async () => {
-      vi.mocked(applyIPRateLimit).mockResolvedValue(); // Rate limiting passes
+      vi.mocked(applyPublicIpRateLimit).mockResolvedValue("app");
       const mockUser = {
         id: mockUserId,
         email: "2fa@example.com",

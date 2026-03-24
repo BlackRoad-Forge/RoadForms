@@ -13,7 +13,8 @@ import {
 } from "@/app/middleware/endpoint-validator";
 import { AUDIT_LOG_ENABLED, IS_PRODUCTION, SENTRY_DSN } from "@/lib/constants";
 import { authOptions } from "@/modules/auth/lib/authOptions";
-import { applyIPRateLimit, applyRateLimit } from "@/modules/core/rate-limit/helpers";
+import { applyRateLimit } from "@/modules/core/rate-limit/helpers";
+import { applyPublicIpRateLimitForRoute } from "@/modules/core/rate-limit/public-edge-rate-limit";
 import { rateLimitConfigs } from "@/modules/core/rate-limit/rate-limit-configs";
 import { TRateLimitConfig } from "@/modules/core/rate-limit/types/rate-limit";
 import { queueAuditEvent } from "@/modules/ee/audit-logs/lib/handler";
@@ -54,14 +55,22 @@ enum ApiV1RouteTypeEnum {
 /**
  * Apply client-side API rate limiting (IP-based)
  */
-const applyClientRateLimit = async (customRateLimitConfig?: TRateLimitConfig): Promise<void> => {
-  await applyIPRateLimit(customRateLimitConfig ?? rateLimitConfigs.api.client);
+const applyClientRateLimit = async (
+  req: NextRequest,
+  customRateLimitConfig?: TRateLimitConfig
+): Promise<void> => {
+  await applyPublicIpRateLimitForRoute(
+    req.nextUrl.pathname,
+    req.method,
+    customRateLimitConfig ?? rateLimitConfigs.api.client
+  );
 };
 
 /**
  * Handle rate limiting based on authentication and API type
  */
 const handleRateLimiting = async (
+  req: NextRequest,
   authentication: TApiV1Authentication,
   routeType: ApiV1RouteTypeEnum,
   customRateLimitConfig?: TRateLimitConfig
@@ -81,7 +90,7 @@ const handleRateLimiting = async (
     }
 
     if (routeType === ApiV1RouteTypeEnum.Client) {
-      await applyClientRateLimit(customRateLimitConfig);
+      await applyClientRateLimit(req, customRateLimitConfig);
     }
   } catch (error) {
     return responses.tooManyRequestsResponse(error instanceof Error ? error.message : "Rate limit exceeded");
@@ -305,7 +314,12 @@ export const withV1ApiWrapper = <TResult extends { response: Response }, TProps 
 
     // === Rate Limiting ===
     if (isRateLimited) {
-      const rateLimitResponse = await handleRateLimiting(authentication, routeType, customRateLimitConfig);
+      const rateLimitResponse = await handleRateLimiting(
+        req,
+        authentication,
+        routeType,
+        customRateLimitConfig
+      );
       if (rateLimitResponse) return rateLimitResponse;
     }
 
