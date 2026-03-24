@@ -1,6 +1,7 @@
 import "server-only";
 import dns from "node:dns";
 import { InvalidInputError } from "@formbricks/types/errors";
+import { DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS } from "../constants";
 
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",
@@ -136,6 +137,8 @@ export const validateWebhookUrl = async (url: string): Promise<void> => {
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new InvalidInputError("Webhook URL must use HTTPS or HTTP protocol");
   }
+
+  if (DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS) return;
 
   const hostname = parsed.hostname;
 

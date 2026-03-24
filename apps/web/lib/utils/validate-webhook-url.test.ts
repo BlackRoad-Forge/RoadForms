@@ -9,6 +9,10 @@ vi.mock("node:dns", () => ({
   },
 }));
 
+vi.mock("../constants", () => ({
+  DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: false,
+}));
+
 const mockResolve = vi.mocked(dns.resolve);
 const mockResolve6 = vi.mocked(dns.resolve6);
 
@@ -292,6 +296,39 @@ describe("validateWebhookUrl", () => {
       await expect(validateWebhookUrl("http://127.0.0.1/")).rejects.toMatchObject({
         name: "InvalidInputError",
       });
+    });
+  });
+
+  describe("DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS", () => {
+    test("allows private IP URLs when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("http://127.0.0.1/")).resolves.toBeUndefined();
+      await expect(validateWithFlag("http://192.168.1.1/test")).resolves.toBeUndefined();
+      await expect(validateWithFlag("http://10.0.0.1/webhook")).resolves.toBeUndefined();
+    });
+
+    test("still rejects invalid URL format when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("not-a-url")).rejects.toThrow("Invalid webhook URL format");
+    });
+
+    test("still rejects non-HTTP protocols when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("ftp://192.168.1.1/")).rejects.toThrow(
+        "Webhook URL must use HTTPS or HTTP protocol"
+      );
     });
   });
 });
