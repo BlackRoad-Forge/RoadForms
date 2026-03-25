@@ -51,12 +51,14 @@ export function MultipleChoiceSingleElement({
       return [];
     }
     if (element.shuffleOption === "none" || element.shuffleOption === undefined) return element.choices;
-    return shuffledChoicesIds.map((choiceId) => {
-      const choice = element.choices.find((selectedChoice) => {
-        return selectedChoice.id === choiceId;
-      });
-      return choice;
-    });
+    return shuffledChoicesIds
+      .map((choiceId) => {
+        const choice = element.choices.find((selectedChoice) => {
+          return selectedChoice.id === choiceId;
+        });
+        return choice;
+      })
+      .filter((choice): choice is NonNullable<typeof choice> => choice !== undefined);
   }, [element.choices, element.shuffleOption, shuffledChoicesIds]);
 
   const otherOption = useMemo(
