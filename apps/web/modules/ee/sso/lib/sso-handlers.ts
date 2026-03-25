@@ -29,12 +29,12 @@ const syncSsoAccount = async (userId: string, account: Account) => {
     type: account.type,
     provider: account.provider,
     providerAccountId: account.providerAccountId,
-    access_token: account.access_token ?? null,
-    refresh_token: account.refresh_token ?? null,
-    expires_at: account.expires_at ?? null,
-    scope: account.scope ?? null,
-    token_type: account.token_type ?? null,
-    id_token: account.id_token ?? null,
+    ...(account.access_token !== undefined ? { access_token: account.access_token } : {}),
+    ...(account.refresh_token !== undefined ? { refresh_token: account.refresh_token } : {}),
+    ...(account.expires_at !== undefined ? { expires_at: account.expires_at } : {}),
+    ...(account.scope !== undefined ? { scope: account.scope } : {}),
+    ...(account.token_type !== undefined ? { token_type: account.token_type } : {}),
+    ...(account.id_token !== undefined ? { id_token: account.id_token } : {}),
   });
 };
 

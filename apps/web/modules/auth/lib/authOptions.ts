@@ -319,6 +319,9 @@ export const authOptions: NextAuthOptions = {
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
+        if ("isActive" in user && typeof user.isActive === "boolean") {
+          session.user.isActive = user.isActive;
+        }
       }
       return session;
     },

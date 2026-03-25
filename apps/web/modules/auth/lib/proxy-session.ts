@@ -38,10 +38,15 @@ export const getProxySession = async (request: TRequestWithCookies) => {
     select: {
       userId: true,
       expires: true,
+      user: {
+        select: {
+          isActive: true,
+        },
+      },
     },
   });
 
-  if (!session || session.expires <= new Date()) {
+  if (!session || session.expires <= new Date() || session.user.isActive === false) {
     return null;
   }
 

@@ -320,9 +320,9 @@ describe("authOptions", () => {
 
   describe("Callbacks", () => {
     describe("session callback", () => {
-      test("should add user id to session from database user", async () => {
+      test("should add user id and isActive to session from database user", async () => {
         const session = { user: { email: "user6@example.com" } };
-        const user = { id: "user6" };
+        const user = { id: "user6", isActive: false };
 
         if (!authOptions.callbacks?.session) {
           throw new Error("session callback is not defined");
@@ -331,6 +331,7 @@ describe("authOptions", () => {
         expect(result.user).toEqual({
           email: "user6@example.com",
           id: "user6",
+          isActive: false,
         });
       });
     });

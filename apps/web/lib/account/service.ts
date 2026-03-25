@@ -23,6 +23,14 @@ export const createAccount = async (accountData: TAccountInput): Promise<TAccoun
 
 export const upsertAccount = async (accountData: TAccountInput): Promise<TAccount> => {
   const [validatedAccountData] = validateInputs([accountData, ZAccountInput]);
+  const updateAccountData: Omit<TAccountInput, "userId" | "type" | "provider" | "providerAccountId"> = {
+    access_token: validatedAccountData.access_token,
+    refresh_token: validatedAccountData.refresh_token,
+    expires_at: validatedAccountData.expires_at,
+    scope: validatedAccountData.scope,
+    token_type: validatedAccountData.token_type,
+    id_token: validatedAccountData.id_token,
+  };
 
   try {
     const account = await prisma.account.upsert({
@@ -33,7 +41,7 @@ export const upsertAccount = async (accountData: TAccountInput): Promise<TAccoun
         },
       },
       create: validatedAccountData,
-      update: validatedAccountData,
+      update: updateAccountData,
     });
 
     return account;

@@ -48,6 +48,9 @@ describe("proxy-session", () => {
     mockFindUnique.mockResolvedValue({
       userId: "user-1",
       expires: new Date(Date.now() - 60_000),
+      user: {
+        isActive: true,
+      },
     });
 
     const request = createRequest({
@@ -64,14 +67,40 @@ describe("proxy-session", () => {
       select: {
         userId: true,
         expires: true,
+        user: {
+          select: {
+            isActive: true,
+          },
+        },
       },
     });
+  });
+
+  test("returns null when the session belongs to an inactive user", async () => {
+    mockFindUnique.mockResolvedValue({
+      userId: "user-1",
+      expires: new Date(Date.now() + 60_000),
+      user: {
+        isActive: false,
+      },
+    });
+
+    const request = createRequest({
+      "next-auth.session-token": "inactive-user-token",
+    });
+
+    const session = await getProxySession(request);
+
+    expect(session).toBeNull();
   });
 
   test("returns the session when the cookie maps to a valid session", async () => {
     const validSession = {
       userId: "user-1",
       expires: new Date(Date.now() + 60_000),
+      user: {
+        isActive: true,
+      },
     };
     mockFindUnique.mockResolvedValue(validSession);
 
