@@ -57,6 +57,10 @@ packages/database/migrations
 branch.json
 .vercel
 
+# Golang
+.cache
+services/**/bin/
+
 # IntelliJ IDEA
 /.idea/
 /*.iml

@@ -6,6 +6,7 @@ import { prisma } from "@formbricks/database";
 import { logger } from "@formbricks/logger";
 import { TActionClassType } from "@formbricks/types/action-classes";
 import { DatabaseError, ResourceNotFoundError } from "@formbricks/types/errors";
+import { publishSurveyLifecycleCancellationEvents } from "@/lib/inngest/survey-lifecycle";
 import { getOrganizationByEnvironmentId } from "@/lib/organization/service";
 import { checkForInvalidMediaInBlocks } from "@/lib/survey/utils";
 import { validateInputs } from "@/lib/utils/validate";
@@ -35,6 +36,10 @@ vi.mock("react", async (importOriginal) => {
 
 vi.mock("@/lib/survey/utils", () => ({
   checkForInvalidMediaInBlocks: vi.fn(() => ({ ok: true, data: undefined })),
+}));
+
+vi.mock("@/lib/inngest/survey-lifecycle", () => ({
+  publishSurveyLifecycleCancellationEvents: vi.fn(),
 }));
 
 vi.mock("@/lib/utils/validate", () => ({
@@ -76,6 +81,7 @@ vi.mock("@/lingodotdev/server", () => ({
 
 vi.mock("@formbricks/database", () => ({
   prisma: {
+    $transaction: vi.fn(),
     survey: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -126,9 +132,11 @@ const resetMocks = () => {
   vi.mocked(prisma.survey.count).mockReset();
   vi.mocked(prisma.survey.delete).mockReset();
   vi.mocked(prisma.survey.create).mockReset();
+  vi.mocked(prisma.$transaction).mockReset();
   vi.mocked(prisma.segment.delete).mockReset();
   vi.mocked(prisma.segment.findFirst).mockReset();
   vi.mocked(prisma.actionClass.findMany).mockReset();
+  vi.mocked(publishSurveyLifecycleCancellationEvents).mockReset();
   vi.mocked(logger.error).mockClear();
 };
 
@@ -423,6 +431,9 @@ describe("getSurveysSortedByRelevance", () => {
 describe("deleteSurvey", () => {
   beforeEach(() => {
     resetMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(
+      async (callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma)
+    );
   });
 
   const mockDeletedSurveyData = {
@@ -441,6 +452,10 @@ describe("deleteSurvey", () => {
     expect(prisma.survey.delete).toHaveBeenCalledWith({
       where: { id: surveyId },
       select: expect.objectContaining({ id: true, environmentId: true, segment: expect.anything() }),
+    });
+    expect(publishSurveyLifecycleCancellationEvents).toHaveBeenCalledWith({
+      surveyId,
+      environmentId,
     });
     expect(prisma.segment.delete).not.toHaveBeenCalled();
   });

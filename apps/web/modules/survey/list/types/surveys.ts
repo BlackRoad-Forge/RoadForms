@@ -8,6 +8,8 @@ export const ZSurvey = z.object({
   environmentId: z.string(),
   type: z.enum(["link", "app", "website", "web"]), //we can replace this with ZSurveyType after we remove "web" from schema
   status: ZSurveyStatus,
+  startsAt: z.date().nullable().optional(),
+  endsAt: z.date().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
   responseCount: z.number(),

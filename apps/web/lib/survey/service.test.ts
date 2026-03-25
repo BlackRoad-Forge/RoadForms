@@ -4,11 +4,18 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { testInputValidation } from "vitestSetup";
 import { PrismaErrorType } from "@formbricks/database/types/error";
 import { TSurveyFollowUp } from "@formbricks/database/types/survey-follow-up";
+import { logger } from "@formbricks/logger";
 import { TActionClass } from "@formbricks/types/action-classes";
-import { DatabaseError, InvalidInputError, ResourceNotFoundError } from "@formbricks/types/errors";
+import {
+  DatabaseError,
+  InvalidInputError,
+  ResourceNotFoundError,
+  ValidationError,
+} from "@formbricks/types/errors";
 import { TSegment } from "@formbricks/types/segment";
 import { TSurvey, TSurveyCreateInput, TSurveyQuestionTypeEnum } from "@formbricks/types/surveys/types";
 import { getActionClasses } from "@/lib/actionClass/service";
+import { publishSurveyLifecycleEvents } from "@/lib/inngest/survey-lifecycle";
 import {
   getOrganizationByEnvironmentId,
   subscribeOrganizationMembersToSurveyResponses,
@@ -49,8 +56,23 @@ vi.mock("@/lib/actionClass/service", () => ({
   getActionClasses: vi.fn(),
 }));
 
+vi.mock("@/lib/inngest/survey-lifecycle", () => ({
+  publishSurveyLifecycleEvents: vi.fn(),
+}));
+
+vi.mock("@formbricks/logger", () => ({
+  logger: {
+    error: vi.fn(),
+  },
+}));
+
 beforeEach(() => {
   prisma.survey.count.mockResolvedValue(1);
+  prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+    callback(prisma)
+  );
+  vi.mocked(publishSurveyLifecycleEvents).mockReset();
+  vi.mocked(logger.error).mockReset();
 });
 
 describe("evaluateLogic with mockSurveyWithLogic", () => {
@@ -307,6 +329,18 @@ describe("Tests for updateSurvey", () => {
       prisma.survey.update.mockResolvedValueOnce(mockSurveyOutput);
       const updatedSurvey = await updateSurvey(updateSurveyInput);
       expect(updatedSurvey).toEqual(mockTransformedSurveyOutput);
+      expect(publishSurveyLifecycleEvents).toHaveBeenCalledWith({
+        survey: {
+          id: mockTransformedSurveyOutput.id,
+          environmentId: mockTransformedSurveyOutput.environmentId,
+          startsAt: mockTransformedSurveyOutput.startsAt,
+          endsAt: mockTransformedSurveyOutput.endsAt,
+        },
+        previousSurvey: {
+          startsAt: mockTransformedSurveyOutput.startsAt,
+          endsAt: mockTransformedSurveyOutput.endsAt,
+        },
+      });
     });
 
     // Note: Language handling tests (for languages.length > 0 fix) are covered in
@@ -340,6 +374,26 @@ describe("Tests for updateSurvey", () => {
       prisma.survey.findUnique.mockResolvedValueOnce(mockSurveyOutput);
       prisma.survey.update.mockRejectedValue(new Error(mockErrorMessage));
       await expect(updateSurvey(updateSurveyInput)).rejects.toThrow(Error);
+    });
+
+    test("surfaces post-commit Inngest publish failures", async () => {
+      prisma.survey.findUnique.mockResolvedValueOnce(mockSurveyOutput);
+      prisma.survey.update.mockResolvedValueOnce(mockSurveyOutput);
+      vi.mocked(publishSurveyLifecycleEvents).mockRejectedValueOnce(new Error("send failed"));
+
+      await expect(updateSurvey(updateSurveyInput)).rejects.toThrow("send failed");
+      expect(prisma.survey.update).toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(expect.any(Error), "Error updating survey");
+    });
+
+    test("throws a validation error when startsAt is not before endsAt", async () => {
+      await expect(
+        updateSurvey({
+          ...updateSurveyInput,
+          startsAt: new Date("2026-04-02T12:00:00.000Z"),
+          endsAt: new Date("2026-04-01T12:00:00.000Z"),
+        })
+      ).rejects.toThrow(ValidationError);
     });
   });
 });
@@ -644,6 +698,14 @@ describe("Tests for createSurvey", () => {
 
       expect(prisma.survey.create).toHaveBeenCalled();
       expect(result.name).toEqual(mockSurveyOutput.name);
+      expect(publishSurveyLifecycleEvents).toHaveBeenCalledWith({
+        survey: {
+          id: mockTransformedSurveyOutput.id,
+          environmentId: mockTransformedSurveyOutput.environmentId,
+          startsAt: mockTransformedSurveyOutput.startsAt,
+          endsAt: mockTransformedSurveyOutput.endsAt,
+        },
+      });
       expect(subscribeOrganizationMembersToSurveyResponses).toHaveBeenCalled();
     });
 
@@ -663,6 +725,10 @@ describe("Tests for createSurvey", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as unknown as TSegment);
+      prisma.survey.update.mockResolvedValueOnce({
+        ...mockSurveyOutput,
+        type: "app",
+      });
 
       await createSurvey(mockEnvironmentId, {
         ...mockCreateSurveyInput,

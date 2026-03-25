@@ -27,3 +27,9 @@ The script will prompt you for the following information:
 3. **Domain Name**: Enter the domain name that Traefik will use to create the SSL certificate and forward requests to Formbricks.
 
 That's it! After running the command and providing the required information, visit the domain name you entered, and you should see the Formbricks home wizard!
+
+## Optional Inngest POC Profile
+
+The experimental `inngest-poc` Docker Compose profile adds a self-hosted Inngest server, Redis, Postgres, and the Go worker used for the survey start/end lifecycle proof of concept.
+
+Because the worker is built from source, this profile is meant to be used from a full checkout of the Formbricks repository rather than the one-file quickstart flow above.

@@ -38,6 +38,8 @@ export const env = createEnv({
       .optional()
       .or(z.string().refine((str) => str === "")),
     IMPRINT_ADDRESS: z.string().optional(),
+    INNGEST_BASE_URL: z.url().optional(),
+    INNGEST_EVENT_KEY: z.string().optional(),
     INVITE_DISABLED: z.enum(["1", "0"]).optional(),
     CHATWOOT_WEBSITE_TOKEN: z.string().optional(),
     CHATWOOT_BASE_URL: z.url().optional(),
@@ -161,6 +163,8 @@ export const env = createEnv({
     HTTPS_PROXY: process.env.HTTPS_PROXY,
     IMPRINT_URL: process.env.IMPRINT_URL,
     IMPRINT_ADDRESS: process.env.IMPRINT_ADDRESS,
+    INNGEST_BASE_URL: process.env.INNGEST_BASE_URL,
+    INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INVITE_DISABLED: process.env.INVITE_DISABLED,
     CHATWOOT_WEBSITE_TOKEN: process.env.CHATWOOT_WEBSITE_TOKEN,
     CHATWOOT_BASE_URL: process.env.CHATWOOT_BASE_URL,

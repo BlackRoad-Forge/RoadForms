@@ -193,6 +193,8 @@ const mockWelcomeCard: TSurveyWelcomeCard = {
 const baseSurveyProperties = {
   id: mockId,
   name: "Mock Survey",
+  startsAt: null,
+  endsAt: null,
   autoClose: 10,
   delay: 0,
   autoComplete: 7,

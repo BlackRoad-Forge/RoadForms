@@ -7,6 +7,8 @@ export const surveySelect = {
   updatedAt: true,
   name: true,
   type: true,
+  startsAt: true,
+  endsAt: true,
   creator: {
     select: {
       name: true,

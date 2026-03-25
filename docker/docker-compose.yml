@@ -199,6 +199,14 @@ x-environment: &environment
     # Configure the maximum age for the session in seconds. Default is 86400 (24 hours)
     # SESSION_MAX_AGE: 86400
 
+    ########################################## OPTIONAL (INNGEST POC PROFILE) ##########################################
+
+    # Only required when starting docker compose with --profile inngest-poc
+    # Replace both values with your own `openssl rand -hex 32` output before exposing this profile.
+    INNGEST_BASE_URL: http://inngest:8288
+    INNGEST_EVENT_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    INNGEST_SIGNING_KEY: abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+
 services:
   postgres:
     restart: always
@@ -245,8 +253,85 @@ services:
       - ./saml-connection:/home/nextjs/apps/web/saml-connection
     <<: *environment
 
+  inngest-postgres:
+    profiles: ["inngest-poc"]
+    restart: always
+    image: postgres:17
+    environment:
+      - POSTGRES_DB=inngest
+      - POSTGRES_USER=inngest
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - inngest-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inngest -d inngest || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  inngest-redis:
+    profiles: ["inngest-poc"]
+    restart: always
+    image: redis:7-alpine
+    volumes:
+      - inngest-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  inngest:
+    profiles: ["inngest-poc"]
+    restart: always
+    image: inngest/inngest
+    command: "inngest start"
+    depends_on:
+      inngest-postgres:
+        condition: service_healthy
+      inngest-redis:
+        condition: service_healthy
+      inngest-poc-worker:
+        condition: service_started
+    ports:
+      - 8288:8288
+      - 8289:8289
+    environment:
+      - INNGEST_EVENT_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - INNGEST_SIGNING_KEY=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+      - INNGEST_POSTGRES_URI=postgres://inngest:password@inngest-postgres:5432/inngest
+      - INNGEST_REDIS_URI=redis://inngest-redis:6379
+      - INNGEST_SDK_URL=http://inngest-poc-worker:8287/api/inngest
+      - INNGEST_POLL_INTERVAL=60
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8288/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  inngest-poc-worker:
+    profiles: ["inngest-poc"]
+    restart: always
+    build:
+      context: ..
+      dockerfile: services/inngest-poc-worker/Dockerfile
+    environment:
+      - INNGEST_BASE_URL=http://inngest:8288
+      - INNGEST_SIGNING_KEY=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+      - PORT=8287
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8287/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   postgres:
     driver: local
   redis:
+    driver: local
+  inngest-postgres:
+    driver: local
+  inngest-redis:
     driver: local

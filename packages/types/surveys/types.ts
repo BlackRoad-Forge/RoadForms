@@ -828,6 +828,8 @@ export const ZSurveyBase = z.object({
   environmentId: z.string(),
   createdBy: z.string().nullable(),
   status: ZSurveyStatus,
+  startsAt: z.coerce.date().nullable().optional(),
+  endsAt: z.coerce.date().nullable().optional(),
   displayOption: ZSurveyDisplayOption,
   autoClose: z.number().nullable(),
   triggers: z.array(z.object({ actionClass: ZActionClass })),
@@ -930,7 +932,15 @@ export const ZSurveyBase = z.object({
 });
 
 export const surveyRefinement = (survey: z.infer<typeof ZSurveyBase>, ctx: z.RefinementCtx): void => {
-  const { questions, blocks, languages, welcomeCard, endings, isBackButtonHidden } = survey;
+  const { questions, blocks, languages, welcomeCard, endings, isBackButtonHidden, startsAt, endsAt } = survey;
+
+  if (startsAt && endsAt && startsAt >= endsAt) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Survey start date must be before end date",
+      path: ["startsAt"],
+    });
+  }
 
   // Validate: must have questions OR blocks with elements, not both
   const hasQuestions = questions.length > 0;
