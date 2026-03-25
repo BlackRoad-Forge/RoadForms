@@ -122,9 +122,10 @@ Please take a look at our [migration guide](/self-hosting/advanced/migration) fo
 This repository also includes an experimental `inngest-poc` Docker Compose profile for the survey lifecycle proof of concept. It adds:
 
 - A self-hosted Inngest server on port `8288`
-- A dedicated Postgres instance for Inngest metadata
-- A dedicated Redis instance for queue and run state
 - The Go `inngest-poc-worker` service that exposes `/api/inngest`
+
+The profile intentionally reuses the same Postgres and Redis/Valkey services that already back Formbricks in the
+Compose stack instead of starting separate infrastructure just for Inngest.
 
 <Note>
   This profile builds the worker from the repository source, so it is intended for local evaluation or a full
@@ -156,6 +157,10 @@ docker compose -f docker/docker-compose.yml --profile inngest-poc up -d
 
 Before doing that, replace the `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` placeholder values in
 `docker/docker-compose.yml` with your own `openssl rand -hex 32` output.
+
+In both Compose files, the `inngest-poc` profile points Inngest at the existing Formbricks Postgres and Redis
+services. If you prefer different connection strings or stronger isolation, override `INNGEST_POSTGRES_URI` and
+`INNGEST_REDIS_URI` in your own deployment setup.
 
 ## Optional: Adding MinIO for File Storage
 

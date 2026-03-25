@@ -9,6 +9,11 @@ services:
       - POSTGRES_PASSWORD=postgres
     ports:
       - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   mailhog:
     image: arjenz/mailhog
@@ -23,6 +28,11 @@ services:
       - 6379:6379
     volumes:
       - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -36,36 +46,6 @@ services:
     volumes:
       - minio-data:/data
 
-  inngest-postgres:
-    profiles: ["inngest-poc"]
-    image: postgres:17
-    environment:
-      - POSTGRES_DB=inngest
-      - POSTGRES_USER=inngest
-      - POSTGRES_PASSWORD=password
-    ports:
-      - 5434:5432
-    volumes:
-      - inngest-postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inngest -d inngest || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  inngest-redis:
-    profiles: ["inngest-poc"]
-    image: redis:7-alpine
-    ports:
-      - 6380:6379
-    volumes:
-      - inngest-redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   inngest:
     profiles: ["inngest-poc"]
     image: inngest/inngest
@@ -76,14 +56,14 @@ services:
     environment:
       - INNGEST_EVENT_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - INNGEST_SIGNING_KEY=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
-      - INNGEST_POSTGRES_URI=postgres://inngest:password@inngest-postgres:5432/inngest
-      - INNGEST_REDIS_URI=redis://inngest-redis:6379
+      - INNGEST_POSTGRES_URI=postgres://postgres:postgres@postgres:5432/postgres
+      - INNGEST_REDIS_URI=redis://valkey:6379
       - INNGEST_SDK_URL=http://inngest-poc-worker:8287/api/inngest
       - INNGEST_POLL_INTERVAL=60
     depends_on:
-      inngest-postgres:
+      postgres:
         condition: service_healthy
-      inngest-redis:
+      valkey:
         condition: service_healthy
       inngest-poc-worker:
         condition: service_started
@@ -117,8 +97,4 @@ volumes:
   valkey-data:
     driver: local
   minio-data:
-    driver: local
-  inngest-postgres:
-    driver: local
-  inngest-redis:
     driver: local

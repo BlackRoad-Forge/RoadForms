@@ -253,43 +253,15 @@ services:
       - ./saml-connection:/home/nextjs/apps/web/saml-connection
     <<: *environment
 
-  inngest-postgres:
-    profiles: ["inngest-poc"]
-    restart: always
-    image: postgres:17
-    environment:
-      - POSTGRES_DB=inngest
-      - POSTGRES_USER=inngest
-      - POSTGRES_PASSWORD=password
-    volumes:
-      - inngest-postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inngest -d inngest || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  inngest-redis:
-    profiles: ["inngest-poc"]
-    restart: always
-    image: redis:7-alpine
-    volumes:
-      - inngest-redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   inngest:
     profiles: ["inngest-poc"]
     restart: always
     image: inngest/inngest
     command: "inngest start"
     depends_on:
-      inngest-postgres:
+      postgres:
         condition: service_healthy
-      inngest-redis:
+      redis:
         condition: service_healthy
       inngest-poc-worker:
         condition: service_started
@@ -299,8 +271,8 @@ services:
     environment:
       - INNGEST_EVENT_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - INNGEST_SIGNING_KEY=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
-      - INNGEST_POSTGRES_URI=postgres://inngest:password@inngest-postgres:5432/inngest
-      - INNGEST_REDIS_URI=redis://inngest-redis:6379
+      - INNGEST_POSTGRES_URI=postgres://postgres:postgres@postgres:5432/postgres
+      - INNGEST_REDIS_URI=redis://redis:6379
       - INNGEST_SDK_URL=http://inngest-poc-worker:8287/api/inngest
       - INNGEST_POLL_INTERVAL=60
     healthcheck:
@@ -330,8 +302,4 @@ volumes:
   postgres:
     driver: local
   redis:
-    driver: local
-  inngest-postgres:
-    driver: local
-  inngest-redis:
     driver: local

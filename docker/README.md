@@ -30,6 +30,6 @@ That's it! After running the command and providing the required information, vis
 
 ## Optional Inngest POC Profile
 
-The experimental `inngest-poc` Docker Compose profile adds a self-hosted Inngest server, Redis, Postgres, and the Go worker used for the survey start/end lifecycle proof of concept.
+The experimental `inngest-poc` Docker Compose profile adds a self-hosted Inngest server and the Go worker used for the survey start/end lifecycle proof of concept. It reuses the same Postgres and Redis services that already back Formbricks in this stack.
 
 Because the worker is built from source, this profile is meant to be used from a full checkout of the Formbricks repository rather than the one-file quickstart flow above.
