@@ -62,7 +62,7 @@ vi.mock("@/modules/ee/sso/lib/team", () => ({
 }));
 
 vi.mock("@/lib/account/service", () => ({
-  createAccount: vi.fn(),
+  upsertAccount: vi.fn(),
 }));
 
 vi.mock("@/lib/membership/service", () => ({

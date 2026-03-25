@@ -17,44 +17,6 @@ const handler = async (req: Request, ctx: any) => {
     ...baseAuthOptions,
     callbacks: {
       ...baseAuthOptions.callbacks,
-      async jwt(params: any) {
-        let result: any = params.token;
-        let error: any = undefined;
-
-        try {
-          if (baseAuthOptions.callbacks?.jwt) {
-            result = await baseAuthOptions.callbacks.jwt(params);
-          }
-        } catch (err) {
-          error = err;
-          logger.withContext({ eventId, err }).error("JWT callback failed");
-
-          if (SENTRY_DSN && IS_PRODUCTION) {
-            Sentry.captureException(err);
-          }
-        }
-
-        // Audit JWT operations (token refresh, updates)
-        if (params.trigger && params.token?.profile?.id) {
-          const status: TAuditStatus = error ? "failure" : "success";
-          const auditLog = {
-            action: "jwtTokenCreated" as const,
-            targetType: "user" as const,
-            userId: params.token.profile.id,
-            targetId: params.token.profile.id,
-            organizationId: UNKNOWN_DATA,
-            status,
-            userType: "user" as const,
-            newObject: { trigger: params.trigger, tokenType: "jwt" },
-            ...(error ? { eventId } : {}),
-          };
-
-          queueAuditEventBackground(auditLog);
-        }
-
-        if (error) throw error;
-        return result;
-      },
       async session(params: any) {
         let result: any = params.session;
         let error: any = undefined;
