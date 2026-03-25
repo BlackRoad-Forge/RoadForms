@@ -269,8 +269,8 @@ services:
       - 8288:8288
       - 8289:8289
     environment:
-      - INNGEST_EVENT_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      - INNGEST_SIGNING_KEY=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+      - INNGEST_EVENT_KEY=${INNGEST_EVENT_KEY:?INNGEST_EVENT_KEY is required}
+      - INNGEST_SIGNING_KEY=${INNGEST_SIGNING_KEY:?INNGEST_SIGNING_KEY is required}
       - INNGEST_POSTGRES_URI=postgres://postgres:postgres@postgres:5432/postgres
       - INNGEST_REDIS_URI=redis://redis:6379
       - INNGEST_SDK_URL=http://inngest-poc-worker:8287/api/inngest
@@ -290,7 +290,7 @@ services:
       dockerfile: services/inngest-poc-worker/Dockerfile
     environment:
       - INNGEST_BASE_URL=http://inngest:8288
-      - INNGEST_SIGNING_KEY=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+      - INNGEST_SIGNING_KEY=${INNGEST_SIGNING_KEY:?INNGEST_SIGNING_KEY is required}
       - PORT=8287
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8287/health"]
