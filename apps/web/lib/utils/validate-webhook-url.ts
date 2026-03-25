@@ -138,12 +138,12 @@ export const validateWebhookUrl = async (url: string): Promise<void> => {
     throw new InvalidInputError("Webhook URL must use HTTPS or HTTP protocol");
   }
 
-  if (DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS) return;
-
   const hostname = parsed.hostname;
 
-  if (BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) {
-    throw new InvalidInputError("Webhook URL must not point to localhost or internal services");
+  if (!DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS) {
+    if (BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) {
+      throw new InvalidInputError("Webhook URL must not point to localhost or internal services");
+    }
   }
 
   // Direct IP literal — validate without DNS resolution
@@ -152,9 +152,14 @@ export const validateWebhookUrl = async (url: string): Promise<void> => {
 
   if (isIPv4Literal || isIPv6Literal) {
     const ip = isIPv6Literal ? stripIPv6Brackets(hostname) : hostname;
-    if (isPrivateIP(ip)) {
+    if (!DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS && isPrivateIP(ip)) {
       throw new InvalidInputError("Webhook URL must not point to private or internal IP addresses");
     }
+    return;
+  }
+
+  // Skip DNS resolution for localhost-like hostnames when internal URLs are allowed since these are resolved via /etc/hosts and not DNS
+  if (DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS && BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) {
     return;
   }
 
@@ -171,9 +176,11 @@ export const validateWebhookUrl = async (url: string): Promise<void> => {
     );
   }
 
-  for (const ip of resolvedIPs) {
-    if (isPrivateIP(ip)) {
-      throw new InvalidInputError("Webhook URL must not point to private or internal IP addresses");
+  if (!DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS) {
+    for (const ip of resolvedIPs) {
+      if (isPrivateIP(ip)) {
+        throw new InvalidInputError("Webhook URL must not point to private or internal IP addresses");
+      }
     }
   }
 };
