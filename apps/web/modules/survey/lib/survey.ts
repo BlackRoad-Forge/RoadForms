@@ -16,6 +16,8 @@ export const selectSurvey = {
   environmentId: true,
   createdBy: true,
   status: true,
+  startsAt: true,
+  endsAt: true,
   welcomeCard: true,
   questions: true,
   blocks: true,

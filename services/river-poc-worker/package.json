@@ -1,0 +1,14 @@
+{
+  "name": "@formbricks/river-poc-worker",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "go": "dotenv -e ../../.env -- go run ./cmd/river-poc-worker",
+    "test": "dotenv -e ../../.env -- go test ./...",
+    "test:coverage": "dotenv -e ../../.env -- go test ./... -covermode=atomic -coverprofile=coverage.out"
+  },
+  "devDependencies": {
+    "dotenv-cli": "11.0.0"
+  }
+}

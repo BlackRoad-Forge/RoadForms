@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "services/*"
 
 # Allow lifecycle scripts for packages that need to build native binaries
 # Required for pnpm v10+ which blocks scripts by default

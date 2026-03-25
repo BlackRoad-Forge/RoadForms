@@ -1,11 +1,17 @@
-import { prisma } from "@/lib/__mocks__/database";
+import { prisma } from "../__mocks__/database";
 import { ActionClass, Prisma, Survey } from "@prisma/client";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { testInputValidation } from "vitestSetup";
 import { PrismaErrorType } from "@formbricks/database/types/error";
 import { TSurveyFollowUp } from "@formbricks/database/types/survey-follow-up";
+import { logger } from "@formbricks/logger";
 import { TActionClass } from "@formbricks/types/action-classes";
-import { DatabaseError, InvalidInputError, ResourceNotFoundError } from "@formbricks/types/errors";
+import {
+  DatabaseError,
+  InvalidInputError,
+  ResourceNotFoundError,
+  ValidationError,
+} from "@formbricks/types/errors";
 import { TSegment } from "@formbricks/types/segment";
 import { TSurvey, TSurveyCreateInput, TSurveyQuestionTypeEnum } from "@formbricks/types/surveys/types";
 import { getActionClasses } from "@/lib/actionClass/service";
@@ -13,6 +19,7 @@ import {
   getOrganizationByEnvironmentId,
   subscribeOrganizationMembersToSurveyResponses,
 } from "@/lib/organization/service";
+import { enqueueSurveyLifecycleJobs } from "@/lib/river/survey-lifecycle";
 import { evaluateLogic } from "@/lib/surveyLogic/utils";
 import {
   mockActionClass,
@@ -36,6 +43,8 @@ import {
   updateSurveyInternal,
 } from "./service";
 
+vi.mock("server-only", () => ({}));
+
 // Mock organization service
 vi.mock("@/lib/organization/service", () => ({
   getOrganizationByEnvironmentId: vi.fn().mockResolvedValue({
@@ -49,8 +58,21 @@ vi.mock("@/lib/actionClass/service", () => ({
   getActionClasses: vi.fn(),
 }));
 
+vi.mock("@/lib/river/survey-lifecycle", () => ({
+  enqueueSurveyLifecycleJobs: vi.fn(),
+}));
+
+vi.mock("@formbricks/logger", () => ({
+  logger: {
+    error: vi.fn(),
+  },
+}));
+
 beforeEach(() => {
   prisma.survey.count.mockResolvedValue(1);
+  prisma.$transaction.mockImplementation(async (callback: any) => callback(prisma));
+  vi.mocked(enqueueSurveyLifecycleJobs).mockReset();
+  vi.mocked(logger.error).mockReset();
 });
 
 describe("evaluateLogic with mockSurveyWithLogic", () => {
@@ -309,6 +331,35 @@ describe("Tests for updateSurvey", () => {
       expect(updatedSurvey).toEqual(mockTransformedSurveyOutput);
     });
 
+    test("enqueues lifecycle jobs when a date is assigned for the first time", async () => {
+      const startsAt = new Date("2026-04-01T12:00:00.000Z");
+      const currentSurvey = { ...mockSurveyOutput, startsAt: null, endsAt: null };
+      const persistedSurvey = { ...mockSurveyOutput, startsAt, endsAt: null };
+
+      prisma.survey.findUnique.mockResolvedValueOnce(currentSurvey);
+      prisma.survey.update.mockResolvedValueOnce(persistedSurvey);
+
+      await updateSurvey({
+        ...updateSurveyInput,
+        startsAt,
+        endsAt: null,
+      });
+
+      expect(enqueueSurveyLifecycleJobs).toHaveBeenCalledWith({
+        tx: prisma,
+        survey: {
+          id: persistedSurvey.id,
+          environmentId: persistedSurvey.environmentId,
+          startsAt,
+          endsAt: null,
+        },
+        previousSurvey: {
+          startsAt: null,
+          endsAt: null,
+        },
+      });
+    });
+
     // Note: Language handling tests (for languages.length > 0 fix) are covered in
     // apps/web/modules/survey/editor/lib/survey.test.ts where we have better control
     // over the test mocks. The key fix ensures languages.length > 0 (not > 1) is used.
@@ -340,6 +391,31 @@ describe("Tests for updateSurvey", () => {
       prisma.survey.findUnique.mockResolvedValueOnce(mockSurveyOutput);
       prisma.survey.update.mockRejectedValue(new Error(mockErrorMessage));
       await expect(updateSurvey(updateSurveyInput)).rejects.toThrow(Error);
+    });
+
+    test("logs and rethrows lifecycle enqueue failures", async () => {
+      const enqueueError = new Error("enqueue failed");
+
+      prisma.survey.findUnique.mockResolvedValueOnce({
+        ...mockSurveyOutput,
+        startsAt: null,
+        endsAt: null,
+      });
+      prisma.survey.update.mockResolvedValueOnce({
+        ...mockSurveyOutput,
+        startsAt: new Date("2026-04-01T12:00:00.000Z"),
+        endsAt: null,
+      });
+      vi.mocked(enqueueSurveyLifecycleJobs).mockRejectedValueOnce(enqueueError);
+
+      await expect(
+        updateSurvey({
+          ...updateSurveyInput,
+          startsAt: new Date("2026-04-01T12:00:00.000Z"),
+        })
+      ).rejects.toThrow(enqueueError);
+
+      expect(logger.error).toHaveBeenCalledWith(enqueueError, "Error updating survey");
     });
   });
 });
@@ -647,6 +723,36 @@ describe("Tests for createSurvey", () => {
       expect(subscribeOrganizationMembersToSurveyResponses).toHaveBeenCalled();
     });
 
+    test("passes start and end dates to the lifecycle scheduler", async () => {
+      const startsAt = new Date("2026-04-02T08:00:00.000Z");
+      const endsAt = new Date("2026-04-03T08:00:00.000Z");
+
+      vi.mocked(getOrganizationByEnvironmentId).mockResolvedValueOnce(mockOrganizationOutput);
+      prisma.survey.create.mockResolvedValueOnce({
+        ...mockSurveyOutput,
+        startsAt,
+        endsAt,
+        type: "link",
+      });
+
+      await createSurvey(mockEnvironmentId, {
+        ...mockCreateSurveyInput,
+        type: "link",
+        startsAt,
+        endsAt,
+      });
+
+      expect(enqueueSurveyLifecycleJobs).toHaveBeenCalledWith({
+        tx: prisma,
+        survey: {
+          id: mockSurveyOutput.id,
+          environmentId: mockSurveyOutput.environmentId,
+          startsAt,
+          endsAt,
+        },
+      });
+    });
+
     test("creates a private segment for app surveys", async () => {
       vi.mocked(getOrganizationByEnvironmentId).mockResolvedValueOnce(mockOrganizationOutput);
       prisma.survey.create.mockResolvedValueOnce({
@@ -663,6 +769,10 @@ describe("Tests for createSurvey", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as unknown as TSegment);
+      prisma.survey.update.mockResolvedValueOnce({
+        ...mockSurveyOutput,
+        type: "app",
+      });
 
       await createSurvey(mockEnvironmentId, {
         ...mockCreateSurveyInput,
@@ -724,6 +834,20 @@ describe("Tests for createSurvey", () => {
 
   describe("Sad Path", () => {
     testInputValidation(createSurvey, "123#", mockCreateSurveyInput);
+
+    test("rejects surveys whose start date is not before the end date", async () => {
+      const startsAt = new Date("2026-04-03T08:00:00.000Z");
+      const endsAt = new Date("2026-04-02T08:00:00.000Z");
+
+      await expect(
+        createSurvey(mockEnvironmentId, {
+          ...mockCreateSurveyInput,
+          type: "link",
+          startsAt,
+          endsAt,
+        })
+      ).rejects.toThrow(ValidationError);
+    });
 
     test("throws ResourceNotFoundError if organization not found", async () => {
       vi.mocked(getOrganizationByEnvironmentId).mockResolvedValueOnce(null);

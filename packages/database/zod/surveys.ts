@@ -53,6 +53,8 @@ const ZSurveyBase = z.object({
   redirectUrl: z.url().nullable().describe("The URL to redirect to after the survey is completed"),
   type: z.enum(SurveyType).describe("The type of the survey"),
   status: z.enum(SurveyStatus).describe("The status of the survey"),
+  startsAt: z.coerce.date().nullable().optional().describe("When the survey should start"),
+  endsAt: z.coerce.date().nullable().optional().describe("When the survey should end"),
   thankYouMessage: z.string().nullable().describe("The thank you message of the survey"),
   showLanguageSwitch: z.boolean().nullable().describe("Whether to show the language switch"),
   showThankYouMessage: z.boolean().nullable().describe("Whether to show the thank you message"),

@@ -7,6 +7,7 @@ import { logger } from "@formbricks/logger";
 import { TActionClassType } from "@formbricks/types/action-classes";
 import { DatabaseError, ResourceNotFoundError } from "@formbricks/types/errors";
 import { getOrganizationByEnvironmentId } from "@/lib/organization/service";
+import { deleteSurveyLifecycleJobs } from "@/lib/river/survey-lifecycle";
 import { checkForInvalidMediaInBlocks } from "@/lib/survey/utils";
 import { validateInputs } from "@/lib/utils/validate";
 import { getIsQuotasEnabled } from "@/modules/ee/license-check/lib/utils";
@@ -25,6 +26,8 @@ import {
 } from "./survey";
 import { surveySelect } from "./survey-record";
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
   return {
@@ -35,6 +38,10 @@ vi.mock("react", async (importOriginal) => {
 
 vi.mock("@/lib/survey/utils", () => ({
   checkForInvalidMediaInBlocks: vi.fn(() => ({ ok: true, data: undefined })),
+}));
+
+vi.mock("@/lib/river/survey-lifecycle", () => ({
+  deleteSurveyLifecycleJobs: vi.fn(),
 }));
 
 vi.mock("@/lib/utils/validate", () => ({
@@ -76,6 +83,7 @@ vi.mock("@/lingodotdev/server", () => ({
 
 vi.mock("@formbricks/database", () => ({
   prisma: {
+    $transaction: vi.fn(),
     survey: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -126,9 +134,11 @@ const resetMocks = () => {
   vi.mocked(prisma.survey.count).mockReset();
   vi.mocked(prisma.survey.delete).mockReset();
   vi.mocked(prisma.survey.create).mockReset();
+  vi.mocked(prisma.$transaction).mockReset();
   vi.mocked(prisma.segment.delete).mockReset();
   vi.mocked(prisma.segment.findFirst).mockReset();
   vi.mocked(prisma.actionClass.findMany).mockReset();
+  vi.mocked(deleteSurveyLifecycleJobs).mockReset();
   vi.mocked(logger.error).mockClear();
 };
 
@@ -423,6 +433,7 @@ describe("getSurveysSortedByRelevance", () => {
 describe("deleteSurvey", () => {
   beforeEach(() => {
     resetMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => callback(prisma));
   });
 
   const mockDeletedSurveyData = {
@@ -438,6 +449,7 @@ describe("deleteSurvey", () => {
     const result = await deleteSurvey(surveyId);
 
     expect(result).toBe(true);
+    expect(deleteSurveyLifecycleJobs).toHaveBeenCalledWith({ tx: prisma, surveyId });
     expect(prisma.survey.delete).toHaveBeenCalledWith({
       where: { id: surveyId },
       select: expect.objectContaining({ id: true, environmentId: true, segment: expect.anything() }),
@@ -454,19 +466,20 @@ describe("deleteSurvey", () => {
 
     await deleteSurvey(surveyId);
 
+    expect(deleteSurveyLifecycleJobs).toHaveBeenCalledWith({ tx: prisma, surveyId });
     expect(prisma.segment.delete).not.toHaveBeenCalled();
   });
 
   test("should throw DatabaseError on Prisma error", async () => {
     const prismaError = makePrismaKnownError();
-    vi.mocked(prisma.survey.delete).mockRejectedValue(prismaError);
+    vi.mocked(prisma.$transaction).mockRejectedValue(prismaError);
     await expect(deleteSurvey(surveyId)).rejects.toThrow(DatabaseError);
     expect(logger.error).toHaveBeenCalledWith(prismaError, "Error deleting survey");
   });
 
   test("should rethrow unknown error", async () => {
     const unknownError = new Error("Unknown error");
-    vi.mocked(prisma.survey.delete).mockRejectedValue(unknownError);
+    vi.mocked(prisma.$transaction).mockRejectedValue(unknownError);
     await expect(deleteSurvey(surveyId)).rejects.toThrow(unknownError);
   });
 });

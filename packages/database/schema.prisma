@@ -353,6 +353,8 @@ model Survey {
   creator             User?                   @relation(fields: [createdBy], references: [id])
   createdBy           String?
   status              SurveyStatus            @default(draft)
+  startsAt            DateTime?
+  endsAt              DateTime?
   /// [SurveyWelcomeCard]
   welcomeCard         Json                    @default("{\"enabled\": false}")
   /// [SurveyQuestions]

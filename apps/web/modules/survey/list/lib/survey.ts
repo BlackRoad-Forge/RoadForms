@@ -8,6 +8,7 @@ import { logger } from "@formbricks/logger";
 import { DatabaseError, InvalidInputError, ResourceNotFoundError } from "@formbricks/types/errors";
 import { TSurveyFilterCriteria } from "@formbricks/types/surveys/types";
 import { getOrganizationByEnvironmentId } from "@/lib/organization/service";
+import { deleteSurveyLifecycleJobs } from "@/lib/river/survey-lifecycle";
 import { checkForInvalidMediaInBlocks } from "@/lib/survey/utils";
 import { validateInputs } from "@/lib/utils/validate";
 import { getTranslate } from "@/lingodotdev/server";
@@ -147,39 +148,45 @@ export const getSurvey = reactCache(async (surveyId: string): Promise<TSurvey | 
 
 export const deleteSurvey = async (surveyId: string): Promise<boolean> => {
   try {
-    const deletedSurvey = await prisma.survey.delete({
-      where: {
-        id: surveyId,
-      },
-      select: {
-        id: true,
-        environmentId: true,
-        segment: {
-          select: {
-            id: true,
-            isPrivate: true,
-          },
+    const deletedSurvey = await prisma.$transaction(async (tx) => {
+      await deleteSurveyLifecycleJobs({ tx, surveyId });
+
+      const removedSurvey = await tx.survey.delete({
+        where: {
+          id: surveyId,
         },
-        type: true,
-        triggers: {
-          select: {
-            actionClass: {
-              select: {
-                id: true,
+        select: {
+          id: true,
+          environmentId: true,
+          segment: {
+            select: {
+              id: true,
+              isPrivate: true,
+            },
+          },
+          type: true,
+          triggers: {
+            select: {
+              actionClass: {
+                select: {
+                  id: true,
+                },
               },
             },
           },
         },
-      },
-    });
-
-    if (deletedSurvey.type === "app" && deletedSurvey.segment?.isPrivate) {
-      await prisma.segment.delete({
-        where: {
-          id: deletedSurvey.segment.id,
-        },
       });
-    }
+
+      if (removedSurvey.type === "app" && removedSurvey.segment?.isPrivate) {
+        await tx.segment.delete({
+          where: {
+            id: removedSurvey.segment.id,
+          },
+        });
+      }
+
+      return removedSurvey;
+    });
 
     return true;
   } catch (error) {
