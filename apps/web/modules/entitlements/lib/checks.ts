@@ -10,6 +10,7 @@ const LICENSE_GUARDED_ENTITLEMENTS: Partial<Record<string, keyof TEnterpriseLice
   rbac: "accessControl",
   "spam-protection": "spamProtection",
   contacts: "contacts",
+  ai: "ai",
 };
 
 const TRIAL_RESTRICTED_ENTITLEMENT_KEYS = [

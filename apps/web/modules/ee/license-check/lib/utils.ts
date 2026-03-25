@@ -29,13 +29,14 @@ const getFeaturePermission = async (
 // On Self-hosted: requires active license AND feature enabled in license
 const getCustomPlanFeaturePermission = async (
   organizationId: string,
-  featureKey: keyof Pick<TEnterpriseLicenseFeatures, "accessControl" | "quotas" | "contacts">
+  featureKey: keyof Pick<TEnterpriseLicenseFeatures, "accessControl" | "quotas" | "contacts" | "ai">
 ): Promise<boolean> => {
   if (IS_FORMBRICKS_CLOUD) {
     const featureLookupKeyMap: Record<string, string> = {
       accessControl: CLOUD_STRIPE_FEATURE_LOOKUP_KEYS.RBAC,
       quotas: CLOUD_STRIPE_FEATURE_LOOKUP_KEYS.QUOTA_MANAGEMENT,
       contacts: CLOUD_STRIPE_FEATURE_LOOKUP_KEYS.CONTACTS,
+      ai: CLOUD_STRIPE_FEATURE_LOOKUP_KEYS.AI,
     };
     const lookupKey = featureLookupKeyMap[featureKey];
     if (lookupKey) {
@@ -107,6 +108,10 @@ export const getIsSsoEnabled = async (): Promise<boolean> => {
 
 export const getIsQuotasEnabled = async (organizationId: string): Promise<boolean> => {
   return getCustomPlanFeaturePermission(organizationId, "quotas");
+};
+
+export const getIsAIEnabled = async (organizationId: string): Promise<boolean> => {
+  return getCustomPlanFeaturePermission(organizationId, "ai");
 };
 
 export const getIsAuditLogsEnabled = async (): Promise<boolean> => {
