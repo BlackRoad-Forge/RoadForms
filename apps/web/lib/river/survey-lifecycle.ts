@@ -55,6 +55,14 @@ const quoteIdentifier = (identifier: string): string => {
 const getQualifiedRiverJobTable = (schema: string): Prisma.Sql =>
   Prisma.raw(`${quoteIdentifier(schema)}.${quoteIdentifier("river_job")}`);
 
+const getQualifiedInsertNotificationChannel = (schema: string): string => {
+  if (!identifierPattern.test(schema)) {
+    throw new Error(`Invalid SQL identifier: ${schema}`);
+  }
+
+  return `${schema}.${RIVER_INSERT_NOTIFICATION_CHANNEL}`;
+};
+
 const shouldEnqueueTransition = (previousValue?: Date | null, nextValue?: Date | null): nextValue is Date =>
   previousValue == null && nextValue != null;
 
@@ -111,9 +119,11 @@ const enqueueLifecycleJob = async (
   }
 };
 
-const notifyLifecycleQueue = async (tx: Prisma.TransactionClient): Promise<void> => {
+const notifyLifecycleQueue = async (tx: Prisma.TransactionClient, schema: string): Promise<void> => {
   const payload = JSON.stringify({ queue: RIVER_SURVEY_LIFECYCLE_QUEUE });
-  await tx.$executeRaw(Prisma.sql`SELECT pg_notify(${RIVER_INSERT_NOTIFICATION_CHANNEL}, ${payload})`);
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_notify(${getQualifiedInsertNotificationChannel(schema)}, ${payload})`
+  );
 };
 
 export const enqueueSurveyLifecycleJobs = async ({
@@ -142,7 +152,7 @@ export const enqueueSurveyLifecycleJobs = async ({
       await enqueueLifecycleJob(tx, { ...job, survey, schema, now });
     }
 
-    await notifyLifecycleQueue(tx);
+    await notifyLifecycleQueue(tx, schema);
   } catch (error) {
     logger.error({ error, surveyId: survey.id }, "Failed to enqueue survey lifecycle jobs");
     throw error;

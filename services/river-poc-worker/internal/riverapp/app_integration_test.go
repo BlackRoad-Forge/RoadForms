@@ -85,7 +85,7 @@ func TestAppProcessesSurveyLifecycleJobsFromSQL(t *testing.T) {
 		t.Fatalf("insert job: %v", err)
 	}
 
-	if _, err := pool.Exec(ctx, `SELECT pg_notify('river_insert', $1)`, `{"queue":"survey_lifecycle"}`); err != nil {
+	if _, err := pool.Exec(ctx, `SELECT pg_notify($1, $2)`, fmt.Sprintf(`%s.river_insert`, schema), `{"queue":"survey_lifecycle"}`); err != nil {
 		t.Fatalf("notify river queue: %v", err)
 	}
 

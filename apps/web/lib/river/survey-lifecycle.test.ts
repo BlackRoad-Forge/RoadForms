@@ -65,7 +65,7 @@ describe("enqueueSurveyLifecycleJobs", () => {
       startsAt,
     ]);
     expect(getQueryValues(1, tx)).toEqual([
-      RIVER_INSERT_NOTIFICATION_CHANNEL,
+      `river.${RIVER_INSERT_NOTIFICATION_CHANNEL}`,
       JSON.stringify({ queue: RIVER_SURVEY_LIFECYCLE_QUEUE }),
     ]);
   });
