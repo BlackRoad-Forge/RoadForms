@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { upsertAccount } from "./service";
 
@@ -58,5 +59,39 @@ describe("account service", () => {
         id_token: "id-token",
       },
     });
+  });
+
+  test("upsertAccount wraps Prisma known request errors", async () => {
+    const prismaError = Object.assign(Object.create(Prisma.PrismaClientKnownRequestError.prototype), {
+      message: "duplicate account",
+    });
+
+    mockUpsert.mockRejectedValue(prismaError);
+
+    await expect(
+      upsertAccount({
+        userId: "user-1",
+        type: "oauth",
+        provider: "google",
+        providerAccountId: "provider-1",
+      })
+    ).rejects.toMatchObject({
+      name: "DatabaseError",
+      message: "duplicate account",
+    });
+  });
+
+  test("upsertAccount rethrows non-Prisma errors", async () => {
+    const error = new Error("unexpected failure");
+    mockUpsert.mockRejectedValue(error);
+
+    await expect(
+      upsertAccount({
+        userId: "user-1",
+        type: "oauth",
+        provider: "google",
+        providerAccountId: "provider-1",
+      })
+    ).rejects.toThrow("unexpected failure");
   });
 });
