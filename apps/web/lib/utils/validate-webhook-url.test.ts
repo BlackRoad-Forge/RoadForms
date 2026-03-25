@@ -311,6 +311,47 @@ describe("validateWebhookUrl", () => {
       await expect(validateWithFlag("http://10.0.0.1/webhook")).resolves.toBeUndefined();
     });
 
+    test("allows localhost when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("http://localhost/webhook")).resolves.toBeUndefined();
+      await expect(validateWithFlag("http://localhost:3333/webhook")).resolves.toBeUndefined();
+    });
+
+    test("allows localhost.localdomain when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("http://localhost.localdomain/path")).resolves.toBeUndefined();
+    });
+
+    test("allows hostname resolving to private IP when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      setupDnsResolution(["192.168.1.1"]);
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("https://internal.company.com/webhook")).resolves.toBeUndefined();
+    });
+
+    test("still rejects unresolvable hostnames when enabled", async () => {
+      vi.doMock("../constants", () => ({
+        DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
+      }));
+
+      setupDnsResolution(null, null);
+      const { validateWebhookUrl: validateWithFlag } = await import("./validate-webhook-url");
+      await expect(validateWithFlag("https://typo-gibberish.invalid/hook")).rejects.toThrow(
+        "Could not resolve webhook URL hostname"
+      );
+    });
+
     test("still rejects invalid URL format when enabled", async () => {
       vi.doMock("../constants", () => ({
         DANGEROUSLY_ALLOW_WEBHOOK_INTERNAL_URLS: true,
